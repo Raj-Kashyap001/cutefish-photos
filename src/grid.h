@@ -23,7 +23,7 @@ public:
     void setSelected(bool selected);
     bool isSelected() const { return m_selected; }
 
-    std::function<void(int clickCount)> onClicked;
+    std::function<void(int clickCount, uint32_t modifiers)> onClicked;
     std::function<void(const cutefish::ui::PointF& windowPos)> onContextMenu;
 
 protected:
@@ -69,6 +69,9 @@ public:
     void setItems(std::vector<PhotoItem> items);
     void setCellSize(double edge);
     void setSelectedIndex(int index);
+    void selectAll();
+    void clearSelection();
+    std::vector<int> selectedIndices() const { return m_selectedIndices; }
     int selectedIndex() const { return m_selected; }
     size_t count() const { return m_items.size(); }
     const std::vector<PhotoItem>& items() const { return m_items; }
@@ -93,12 +96,15 @@ private:
     static constexpr double kSpacing = 6;
 
     void rebuild();
+    void applySelection();
     int columnsForWidth(double width) const;
 
     std::vector<PhotoItem> m_items;
     std::vector<ThumbnailView*> m_cells;
     double m_cell = 148;
     int m_selected = -1;
+    std::vector<int> m_selectedIndices;
+    int m_anchor = -1;
     double m_height = 0;
     double m_pinchCell = 148;   // the cell size the pinch began with
 };

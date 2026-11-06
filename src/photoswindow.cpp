@@ -31,6 +31,7 @@
 #include "ui/theme.h"
 #include "ui/toast.h"
 #include "ui/color_provider.h"
+#include "ui/clipboard.h"
 #include "ui/window_header.h"
 #include "ui/keys.h"
 #include "ui/drag.h"
@@ -39,6 +40,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <system_error>
 
@@ -532,8 +534,14 @@ public:
         m_desc->setColor(Theme::current().text);
         m_desc->setTextAlignment(Label::TextAlignment::Center);
 
+        m_author = addChild<Label>(tr("Created by Raj"));
+        m_author->setFontSize(12);
+        m_author->setColor(Theme::current().disabledText);
+        m_author->setTextAlignment(Label::TextAlignment::Center);
+
         m_link = addChild<LinkLabel>("https://cutefish.org");
         m_link->setFontSize(12);
+        m_link->setText(tr("Cutefish Toolkit"));
 
         m_closeButton = addChild<DialogButton>(tr("OK"), true);
         m_closeButton->onClicked = [this] {
@@ -544,8 +552,8 @@ public:
 
     void setDialog(DialogWindow* dialog) { m_dialog = dialog; }
 
-    SizeF sizeHint() const override { return {380, 270}; }
-    double heightForWidth(double) const override { return 270; }
+    SizeF sizeHint() const override { return {380, 320}; }
+    double heightForWidth(double) const override { return 320; }
 
 protected:
     void layout() override
@@ -558,8 +566,10 @@ protected:
         y += 24 + 4;
         m_version->setGeometry({16, y, w - 32, 16});
         y += 16 + 10;
-        m_desc->setGeometry({20, y, w - 40, 36});
-        y += 36 + 10;
+        m_desc->setGeometry({20, y, w - 40, 52});
+        y += 52 + 8;
+        m_author->setGeometry({20, y, w - 40, 16});
+        y += 16 + 8;
         m_link->setGeometry({20, y, w - 40, 18});
         y += 18 + 16;
         const SizeF btnSize = m_closeButton->sizeHint();
@@ -572,6 +582,7 @@ private:
     Label* m_title = nullptr;
     Label* m_version = nullptr;
     Label* m_desc = nullptr;
+    Label* m_author = nullptr;
     LinkLabel* m_link = nullptr;
     DialogButton* m_closeButton = nullptr;
 };
@@ -983,6 +994,12 @@ PhotosWindow::PhotosWindow()
 
     // Shortcuts.
     m_window.addShortcut(ControlModifier, key::letter('o'), [this] { chooseFolder(); });
+    m_window.addShortcut(ControlModifier, key::letter('a'), [this] {
+        if (!m_detail && !m_items.empty())
+            m_root->grid->selectAll();
+    });
+    m_window.addShortcut(ControlModifier, key::letter('c'), [this] { copySelectedPaths(false); });
+    m_window.addShortcut(ControlModifier | ShiftModifier, key::letter('c'), [this] { copySelectedPaths(true); });
     m_window.addShortcut(ControlModifier, '=', [this] { zoomIn(); });
     m_window.addShortcut(ControlModifier | ShiftModifier, '=', [this] { zoomIn(); });
     m_window.addShortcut(ControlModifier, '+', [this] { zoomIn(); });
@@ -1816,6 +1833,12 @@ void PhotosWindow::addAlbumFolder(const std::string& folder)
     const std::string pathStr = p.string();
     for (const auto& existing : m_customAlbums) {
         if (existing == pathStr) {
+            // Make sure the sidebar reflects the persisted album and show it,
+            // even if it was missing from the view after a restart.
+            m_library = scanLibrary(m_folder, m_customAlbums);
+            m_root->sidebar->setLibrary(m_library);
+            setSelection("album:" + pathStr);
+            refreshItems();
             showNotification(tr("Folder is already in Albums"), 2500);
             return;
         }
@@ -1825,6 +1848,7 @@ void PhotosWindow::addAlbumFolder(const std::string& folder)
     m_settings.sync();
     m_library = scanLibrary(m_folder, m_customAlbums);
     m_root->sidebar->setLibrary(m_library);
+    setSelection("album:" + pathStr);
     refreshItems();
     showNotification(tr("Added album: ") + p.filename().string(), 2500);
 }
@@ -1843,6 +1867,40 @@ void PhotosWindow::removeAlbumFolder(const std::string& folder)
         refreshItems();
         showNotification(tr("Album removed"), 2000);
     }
+}
+
+void PhotosWindow::copySelectedPaths(bool relative)
+{
+    if (m_detail)
+        return;
+    std::vector<int> indices = m_root->grid->selectedIndices();
+    if (indices.empty() && m_root->grid->selectedIndex() >= 0)
+        indices.push_back(m_root->grid->selectedIndex());
+    if (indices.empty() || indices.size() > m_items.size())
+        return;
+    std::vector<std::string> lines;
+    for (int idx : indices) {
+        if (idx < 0 || idx >= int(m_items.size()))
+            continue;
+        std::string path = m_items[size_t(idx)].path;
+        if (relative) {
+            std::error_code ec;
+            path = std::filesystem::relative(path, m_folder, ec).string();
+            if (ec || path.empty())
+                path = m_items[size_t(idx)].path;
+        }
+        lines.push_back(path);
+    }
+    if (lines.empty())
+        return;
+    std::string text;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (i)
+            text += "\n";
+        text += lines[i];
+    }
+    cutefish::ui::Clipboard::setText(text);
+    showNotification(tr("Copied ") + std::to_string(lines.size()) + tr(" path(s)"), 2000);
 }
 
 void PhotosWindow::showGridEmptyContextMenu(const PointF& windowPos)
@@ -2052,8 +2110,12 @@ void PhotosWindow::buildMainMenu()
     Menu* edit = m_mainMenu->addSubmenu(tr("Edit"));
     const size_t selectAll = edit->addItem(tr("Select All"), [this] {
         if (!m_detail && !m_items.empty())
-            m_root->grid->setSelectedIndex(0);
+            m_root->grid->selectAll();
     });
+    const size_t copyItem = edit->addItem(tr("Copy"), [this] { copySelectedPaths(false); });
+    edit->setItemKeyEquivalent(copyItem, "c", ctrl);
+    const size_t copyRelItem = edit->addItem(tr("Copy Relative Path"), [this] { copySelectedPaths(true); });
+    edit->setItemKeyEquivalent(copyRelItem, "c", ctrl | shift);
     edit->setItemKeyEquivalent(selectAll, "a", ctrl);
 
     const size_t deselectAll = edit->addItem(tr("Deselect All"), [this] {
@@ -2080,13 +2142,16 @@ void PhotosWindow::buildMainMenu()
     });
     edit->setItemKeyEquivalent(convert, "e", ctrl | shift);
 
-    edit->onAboutToShow = [edit, selectAll, deselectAll, renameItem, resize, convert, this] {
+    edit->onAboutToShow = [edit, selectAll, deselectAll, renameItem, resize, convert, copyItem, copyRelItem, this] {
         const bool hasActive = (currentPhotoIndex() >= 0);
+        const bool hasSelection = !m_detail && !m_root->grid->selectedIndices().empty();
         edit->setItemEnabled(selectAll, !m_detail && !m_items.empty());
         edit->setItemEnabled(deselectAll, !m_detail && (m_root->grid->selectedIndex() >= 0));
         edit->setItemEnabled(renameItem, hasActive);
         edit->setItemEnabled(resize, hasActive);
         edit->setItemEnabled(convert, hasActive);
+        edit->setItemEnabled(copyItem, hasSelection);
+        edit->setItemEnabled(copyRelItem, hasSelection);
     };
 
     // 4. Image

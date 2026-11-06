@@ -39,7 +39,7 @@ public:
     std::function<void()> onAddFolder;
 
     struct Row {
-        cutefish::ui::ThemeIcon* icon = nullptr;
+        cutefish::ui::Icon* icon = nullptr;
         cutefish::ui::Label* label = nullptr;
         std::string id;
         std::string path;

@@ -84,6 +84,21 @@ static const char* addGlyph =
     "<path d='M8 3v10M3 8h10'/>"
     "</g></svg>";
 
+static const char* folderGlyph =
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+    "<g fill='none' stroke='#000' stroke-width='1.3' stroke-linejoin='round'>"
+    "<path d='M1.5 4.5h5l1.5 2h6.5v7h-13z'/>"
+    "</g></svg>";
+
+static const char* gridGlyph =
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+    "<g fill='#000'>"
+    "<rect x='1.5' y='1.5' width='5.5' height='5.5' rx='1.2'/>"
+    "<rect x='9' y='1.5' width='5.5' height='5.5' rx='1.2'/>"
+    "<rect x='1.5' y='9' width='5.5' height='5.5' rx='1.2'/>"
+    "<rect x='9' y='9' width='5.5' height='5.5' rx='1.2'/>"
+    "</g></svg>";
+
 void registerPhotoGlyphs()
 {
     Icon::registerGlyph("photo-zoom-in", zoomInGlyph);
@@ -97,6 +112,9 @@ void registerPhotoGlyphs()
     Icon::registerGlyph("photo-fullscreen-exit", fullscreenExitGlyph);
     Icon::registerGlyph("photo-edit", editGlyph);
     Icon::registerGlyph("photo-add", addGlyph);
+    Icon::registerGlyph("photo-library", gridGlyph);
+    Icon::registerGlyph("photo-favorites", heartFilledGlyph);
+    Icon::registerGlyph("photo-folder", folderGlyph);
 }
 
 } // namespace photos

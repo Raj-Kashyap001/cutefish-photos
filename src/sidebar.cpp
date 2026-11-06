@@ -7,13 +7,15 @@
 #include "ui/label.h"
 #include "ui/painter.h"
 #include "ui/theme.h"
+#include <cstdio>
+#include <map>
 
 using namespace cutefish::ui;
 using cutefish::i18n::tr;
 
 namespace photos {
 
-static constexpr double kRowHeight = 34;
+static constexpr double kRowHeight = 30;
 static constexpr double kRowSpacing = 2;
 static constexpr double kSectionHeight = 30;
 static constexpr double kHeaderInset = 44;   // below the window header
@@ -55,7 +57,7 @@ void PhotosSidebar::rebuild()
     const auto addRow = [&](const std::string& id, const std::string& icon, const std::string& text,
                             const std::string& path = {}, bool custom = false) {
         Row row;
-        row.icon = addChild<ThemeIcon>(icon, 18);
+        row.icon = addChild<Icon>(icon, 18);
         row.label = addChild<Label>(text);
         row.label->setElide(Label::Elide::Right);
         row.label->setVerticallyCentered(true);
@@ -65,13 +67,28 @@ void PhotosSidebar::rebuild()
         m_rows.push_back(row);
     };
 
-    addRow("all", "viewimage", tr("All Photos"));
-    addRow("favorites", "heart-filled-symbolic", tr("Favorites"));
+    addRow("all", "photo-library", tr("All Photos"));
+    addRow("favorites", "photo-favorites", tr("Favorites"));
 
     bool albums = false;
+    std::map<std::string, int> albumNameCounts;
+    if (m_library) {
+        for (const auto& album : m_library->albums)
+            albumNameCounts[album.name]++;
+    }
     if (m_library) {
         for (const auto& album : m_library->albums) {
-            addRow(albumSelection(album.path), "folder-pictures", album.name, album.path, album.custom);
+            addRow(albumSelection(album.path), "photo-folder", album.name, album.path, album.custom);
+            if (albumNameCounts[album.name] > 1) {
+                Row& row = m_rows.back();
+                if (row.label) {
+                    const Theme& theme = Theme::current();
+                    row.label->setSpans({
+                        {album.name, 600, {}},
+                        {"  " + album.path, 400, theme.highlight},
+                    });
+                }
+            }
             albums = true;
         }
     }
@@ -131,7 +148,7 @@ void PhotosSidebar::place(double width)
         }
         row.rect = {rowInset, y, rowWidth, kRowHeight};
         const bool selected = row.id == m_selected;
-        const Color tint = selected ? theme.highlightedText : theme.highlight;
+        const Color tint = selected ? theme.highlightedText : theme.disabledText;
         row.icon->setColor(tint);
         row.icon->setGeometry({row.rect.x + 10, y + (kRowHeight - 18) / 2, 18, 18});
         row.label->setColor(selected ? theme.highlightedText : theme.text);

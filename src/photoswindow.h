@@ -80,6 +80,7 @@ private:
     void showConvertDialog(int index = -1);
     void toggleSidebar();
     void toggleFullScreen();
+    void copySelectedPaths(bool relative);
     void chooseAlbumFolder();
     void addAlbumFolder(const std::string& folder);
     void removeAlbumFolder(const std::string& folder);

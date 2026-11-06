@@ -95,7 +95,7 @@ void ThumbnailView::pointerRelease(const PointerEvent& event)
         return;
     }
     if (event.button == MouseButton::Left && onClicked)
-        onClicked(event.clickCount);
+        onClicked(event.clickCount, event.modifiers);
 }
 
 bool ThumbnailView::scroll(const ScrollEvent& event)
@@ -124,6 +124,8 @@ void GridContent::setItems(std::vector<PhotoItem> items)
 {
     m_items = std::move(items);
     m_selected = -1;
+    m_selectedIndices.clear();
+    m_anchor = -1;
     rebuild();
 }
 
@@ -137,13 +139,48 @@ void GridContent::setCellSize(double edge)
 
 void GridContent::setSelectedIndex(int index)
 {
-    if (m_selected == index)
-        return;
-    if (m_selected >= 0 && m_selected < int(m_cells.size()))
-        m_cells[size_t(m_selected)]->setSelected(false);
-    m_selected = index;
-    if (m_selected >= 0 && m_selected < int(m_cells.size()))
-        m_cells[size_t(m_selected)]->setSelected(true);
+    m_selectedIndices.clear();
+    if (index >= 0 && index < int(m_items.size())) {
+        m_selectedIndices.push_back(index);
+        m_selected = index;
+        m_anchor = index;
+    } else {
+        m_selected = -1;
+        m_anchor = -1;
+    }
+    applySelection();
+}
+
+void GridContent::selectAll()
+{
+    m_selectedIndices.clear();
+    for (int i = 0; i < int(m_items.size()); ++i)
+        m_selectedIndices.push_back(i);
+    m_selected = m_items.empty() ? -1 : int(m_items.size()) - 1;
+    m_anchor = m_items.empty() ? -1 : 0;
+    applySelection();
+}
+
+void GridContent::clearSelection()
+{
+    m_selectedIndices.clear();
+    m_selected = -1;
+    m_anchor = -1;
+    applySelection();
+}
+
+void GridContent::applySelection()
+{
+    std::sort(m_selectedIndices.begin(), m_selectedIndices.end());
+    m_selectedIndices.erase(std::unique(m_selectedIndices.begin(), m_selectedIndices.end()), m_selectedIndices.end());
+    for (size_t i = 0; i < m_cells.size(); ++i) {
+        bool sel = std::find(m_selectedIndices.begin(), m_selectedIndices.end(), int(i)) != m_selectedIndices.end();
+        m_cells[i]->setSelected(sel);
+    }
+    if (!m_selectedIndices.empty())
+        m_selected = m_selectedIndices.back();
+    else
+        m_selected = -1;
 }
 
 void GridContent::rebuild()
@@ -156,13 +193,39 @@ void GridContent::rebuild()
     for (size_t i = 0; i < m_items.size(); ++i) {
         ThumbnailView* cell = addChild<ThumbnailView>(m_items[i]);
         const int index = int(i);
-        cell->onClicked = [this, index](int clickCount) {
-            setSelectedIndex(index);
-            if (onActivated)
-                onActivated(index, clickCount);
+        cell->onClicked = [this, index](int clickCount, uint32_t modifiers) {
+            if (clickCount >= 2) {
+                setSelectedIndex(index);
+                if (onActivated)
+                    onActivated(index, clickCount);
+                return;
+            }
+            if (modifiers & ControlModifier) {
+                auto it = std::find(m_selectedIndices.begin(), m_selectedIndices.end(), index);
+                if (it != m_selectedIndices.end())
+                    m_selectedIndices.erase(it);
+                else
+                    m_selectedIndices.push_back(index);
+                m_selected = index;
+                m_anchor = index;
+                applySelection();
+            } else if (modifiers & ShiftModifier) {
+                if (m_anchor < 0)
+                    m_anchor = index;
+                int from = std::min(m_anchor, index);
+                int to = std::max(m_anchor, index);
+                m_selectedIndices.clear();
+                for (int i = from; i <= to; ++i)
+                    m_selectedIndices.push_back(i);
+                m_selected = index;
+                applySelection();
+            } else {
+                setSelectedIndex(index);
+            }
         };
         cell->onContextMenu = [this, index](const PointF& windowPos) {
-            setSelectedIndex(index);
+            if (std::find(m_selectedIndices.begin(), m_selectedIndices.end(), index) == m_selectedIndices.end())
+                setSelectedIndex(index);
             if (onContextMenu)
                 onContextMenu(index, windowPos);
         };
